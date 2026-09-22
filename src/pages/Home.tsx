@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Sparkles, Loader2 } from 'lucide-react';
-import { buildSite, type SiteDocument } from '../lib/api';
+import { useState, useRef, useEffect } from 'react';
+import { Sparkles, Loader2, Wand2, Download, RotateCcw } from 'lucide-react';
+import { buildSite, refineSite, type SiteDocument } from '../lib/api';
+import { downloadSiteHtml } from '../lib/export-html';
 import SitePreview from '../components/SitePreview';
 
 const EXAMPLES = [
@@ -13,13 +14,23 @@ export default function Home() {
   const [brief, setBrief] = useState('');
   const [site, setSite] = useState<SiteDocument | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const [instruction, setInstruction] = useState('');
+  const [reply, setReply] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const refineRef = useRef<HTMLInputElement>(null);
+
+  // After a generation the next useful action is a refinement, so the focus
+  // goes there rather than back to the brief.
+  useEffect(() => {
+    if (site) refineRef.current?.focus();
+  }, [site]);
 
   async function generate() {
     if (!brief.trim() || busy) return;
     setBusy(true);
     setError(null);
-    setSite(null);
+    setReply(null);
 
     try {
       setSite(await buildSite(brief.trim(), 'hu'));
@@ -27,6 +38,24 @@ export default function Home() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function refine() {
+    if (!site || !instruction.trim() || refining) return;
+    setRefining(true);
+    setError(null);
+    setReply(null);
+
+    try {
+      const result = await refineSite(site, instruction.trim(), 'hu');
+      setSite(result.site);
+      setReply(result.reply);
+      setInstruction('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefining(false);
     }
   }
 
@@ -81,8 +110,18 @@ export default function Home() {
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {busy ? 'Építés…' : 'Oldal elkészítése'}
+              {busy ? 'Építés…' : site ? 'Új oldal' : 'Oldal elkészítése'}
             </button>
+            {site && (
+              <button
+                type="button"
+                onClick={() => downloadSiteHtml(site, brief)}
+                className="vp-btn-ghost"
+              >
+                <Download className="h-4 w-4" />
+                HTML letöltése
+              </button>
+            )}
             <span className="text-xs text-ink-400">Cmd / Ctrl + Enter</span>
           </div>
 
@@ -100,6 +139,13 @@ export default function Home() {
           </div>
         </div>
 
+        {busy && (
+          <div className="mt-5 flex items-center gap-3 rounded-xl border border-line bg-panel px-4 py-3 text-sm text-ink-300">
+            <Loader2 className="h-4 w-4 animate-spin text-accent" />
+            A csapat megtervezi a szerkezetet, megírja a szövegeket és összeállítja az oldalt.
+          </div>
+        )}
+
         {error && (
           <p className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}
@@ -112,7 +158,51 @@ export default function Home() {
               <h2 className="text-lg font-medium text-white">{site.site.title}</h2>
               <span className="text-xs text-ink-400">{site.blocks.length} szekció</span>
             </div>
+
             <SitePreview document={site} />
+
+            <div className="mt-5">
+              <label htmlFor="refine" className="mb-2 block text-xs text-ink-400">
+                Változtass egy dolgot
+              </label>
+              <div className="flex gap-3">
+                <input
+                  id="refine"
+                  ref={refineRef}
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void refine();
+                  }}
+                  placeholder="Pl. legyen világosabb a színvilág"
+                  className="vp-input flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={refine}
+                  disabled={refining || !instruction.trim()}
+                  className="vp-btn"
+                >
+                  {refining ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-4 w-4" />
+                  )}
+                  {refining ? '…' : 'Alkalmaz'}
+                </button>
+              </div>
+
+              {reply && (
+                <p className="mt-3 rounded-lg border border-line bg-panel px-4 py-3 text-sm text-ink-200">
+                  {reply}
+                </p>
+              )}
+
+              <p className="mt-3 flex items-center gap-2 text-xs text-ink-400">
+                <RotateCcw className="h-3.5 w-3.5" />
+                A finomítás csak azt írja át, amit kértél — a szerkezet megmarad.
+              </p>
+            </div>
           </div>
         )}
       </section>
