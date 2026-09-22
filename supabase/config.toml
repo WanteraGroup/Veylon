@@ -1,0 +1,5 @@
+project_id = "ovbzoxwwurklwawdvudf"
+
+[functions.vey-generate]
+verify_jwt = false
+entrypoint = "./functions/vey-generate/index.ts"
